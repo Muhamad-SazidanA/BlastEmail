@@ -120,7 +120,7 @@ export async function triggerBlastAction(campaignId: string) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        id_campaign: updatedCampaign.campaignId,
+        campaign_id: updatedCampaign.campaignId,
       }),
     });
 
@@ -184,7 +184,7 @@ export async function triggerTestBlastAction(campaignId: string, testEmail: stri
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        id_campaign: campaign.campaignId,
+        campaign_id: campaign.campaignId,
         email: testEmail,
       }),
     });
