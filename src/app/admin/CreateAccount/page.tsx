@@ -3,16 +3,11 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function RootPage() {
+export default function CreateAccountRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    const session = localStorage.getItem("blastmail_session");
-    if (session) {
-      router.push("/Dashboard");
-    } else {
-      router.push("/Login");
-    }
+    router.replace("/admin/create-user");
   }, [router]);
 
   return (

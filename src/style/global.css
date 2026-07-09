@@ -1,0 +1,341 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
+/* ── Reset ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: #f1f5f9;
+  color: #1e293b;
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── Anchor reset ──────────────────────────────────────────────── */
+a { color: inherit; text-decoration: none; }
+
+/* ── BlockNote Static Formatting Toolbar Styles ───────────────────────────── */
+
+/* Wrapper for the entire editor */
+.bn-editor-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Make the bn-container flex column so we can reorder children */
+.bn-editor-wrapper .bn-container {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 300px;
+}
+
+/* Reduce editor content padding so text starts closer to the left and top */
+.bn-editor-wrapper .bn-editor {
+  padding: 8px 12px !important;
+}
+
+.bn-editor-wrapper .bn-editor .bn-block-outer {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+.bn-editor-wrapper .bn-editor>.bn-block-group>.bn-block-outer:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* The editor content area */
+.bn-editor-wrapper .bn-container>[data-bn-autofocus],
+.bn-editor-wrapper .bn-container>div[contenteditable],
+.bn-editor-wrapper .bn-container>.bn-editor {
+  order: 2;
+  flex: 1;
+}
+
+/* Static toolbar container - always visible at top, uses order to appear first */
+.bn-static-toolbar {
+  order: -1 !important;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: linear-gradient(to bottom, #ffffff, #f8f9fb);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Override BlockNote's default toolbar to be inline/static instead of floating */
+.bn-static-toolbar .bn-toolbar.bn-formatting-toolbar {
+  box-shadow: none !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  position: static !important;
+  transform: none !important;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* Style toolbar buttons */
+.bn-static-toolbar .bn-toolbar button,
+.bn-static-toolbar .bn-toolbar [data-test] {
+  border-radius: 6px !important;
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  background: transparent;
+  border: 1px solid transparent !important;
+  color: #475569;
+  cursor: pointer;
+}
+
+.bn-static-toolbar .bn-toolbar button:hover,
+.bn-static-toolbar .bn-toolbar [data-test]:hover {
+  background: #e8edf3 !important;
+  border-color: #cbd5e1 !important;
+  color: #1e293b;
+}
+
+.bn-static-toolbar .bn-toolbar button[data-active="true"],
+.bn-static-toolbar .bn-toolbar button[aria-pressed="true"],
+.bn-static-toolbar .bn-toolbar button.mantine-active {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 1px 2px rgba(59, 130, 246, 0.12);
+}
+
+/* Block Type Select dropdown styling */
+.bn-static-toolbar .bn-toolbar select,
+.bn-static-toolbar .bn-toolbar .bn-block-type-select,
+.bn-static-toolbar .bn-toolbar [class*="Select"],
+.bn-static-toolbar .bn-toolbar .mantine-Select-input {
+  border-radius: 6px;
+  height: 32px;
+  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #334155;
+  padding: 0 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bn-static-toolbar .bn-toolbar select:hover,
+.bn-static-toolbar .bn-toolbar .mantine-Select-input:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.bn-static-toolbar .bn-toolbar select:focus,
+.bn-static-toolbar .bn-toolbar .mantine-Select-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  outline: none;
+}
+
+/* Custom divider between button groups */
+.bn-toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: #e2e8f0;
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* Tooltip styling for toolbar buttons */
+.bn-static-toolbar .bn-toolbar [data-tooltip] {
+  position: relative;
+}
+
+/* Responsive: wrap toolbar on smaller screens */
+@media (max-width: 640px) {
+  .bn-static-toolbar {
+    padding: 4px 6px;
+    gap: 2px;
+  }
+
+  .bn-static-toolbar .bn-toolbar.bn-formatting-toolbar {
+    gap: 1px;
+  }
+
+  .bn-static-toolbar .bn-toolbar button,
+  .bn-static-toolbar .bn-toolbar [data-test] {
+    min-width: 28px;
+    height: 28px;
+  }
+
+  .bn-toolbar-divider {
+    height: 20px;
+    margin: 0 4px;
+  }
+}
+
+/* BlockNote content colors for public rendering */
+[data-text-color="gray"] { color: #8a8a8a !important; }
+[data-text-color="brown"] { color: #9f6b53 !important; }
+[data-text-color="orange"] { color: #ff9c38 !important; }
+[data-text-color="yellow"] { color: #f2ca00 !important; }
+[data-text-color="green"] { color: #2d9d78 !important; }
+[data-text-color="blue"] { color: #2c83c2 !important; }
+[data-text-color="purple"] { color: #8d5ec2 !important; }
+[data-text-color="pink"] { color: #d63384 !important; }
+[data-text-color="red"] { color: #d9534f !important; }
+
+[data-background-color="gray"] { background-color: #f1f1f1 !important; padding: 2px 6px; border-radius: 4px; }
+[data-background-color="brown"] { background-color: #f4eeee !important; padding: 2px 6px; border-radius: 4px; }
+[data-background-color="orange"] { background-color: #fbecdd !important; padding: 2px 6px; border-radius: 4px; }
+[data-background-color="yellow"] { background-color: #fbf3db !important; padding: 2px 6px; border-radius: 4px; }
+[data-background-color="green"] { background-color: #edf3ec !important; padding: 2px 6px; border-radius: 4px; }
+[data-background-color="blue"] { background-color: #ecf3f8 !important; padding: 2px 6px; border-radius: 4px; }
+[data-background-color="purple"] { background-color: #f3edf8 !important; padding: 2px 6px; border-radius: 4px; }
+[data-background-color="pink"] { background-color: #f8edf3 !important; padding: 2px 6px; border-radius: 4px; }
+[data-background-color="red"] { background-color: #fbebeb !important; padding: 2px 6px; border-radius: 4px; }
+
+/* ── BlockNote Static Toolbar ────────────────────────────────── */
+
+.bn-static-toolbar {
+  order: -1 !important;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: linear-gradient(to bottom, #ffffff, #f8f9fb);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Override BlockNote's default toolbar to be inline/static instead of floating */
+.bn-static-toolbar .bn-toolbar.bn-formatting-toolbar {
+  box-shadow: none !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  position: static !important;
+  transform: none !important;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* Style toolbar buttons */
+.bn-static-toolbar .bn-toolbar button,
+.bn-static-toolbar .bn-toolbar [data-test] {
+  border-radius: 6px !important;
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  background: transparent;
+  border: 1px solid transparent !important;
+  color: #475569;
+  cursor: pointer;
+}
+
+.bn-static-toolbar .bn-toolbar button:hover,
+.bn-static-toolbar .bn-toolbar [data-test]:hover {
+  background: #e8edf3 !important;
+  border-color: #cbd5e1 !important;
+  color: #1e293b;
+}
+
+.bn-static-toolbar .bn-toolbar button[data-active="true"],
+.bn-static-toolbar .bn-toolbar button[aria-pressed="true"],
+.bn-static-toolbar .bn-toolbar button.mantine-active {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 1px 2px rgba(59, 130, 246, 0.12);
+}
+
+/* Block Type Select dropdown styling */
+.bn-static-toolbar .bn-toolbar select,
+.bn-static-toolbar .bn-toolbar .bn-block-type-select,
+.bn-static-toolbar .bn-toolbar [class*="Select"],
+.bn-static-toolbar .bn-toolbar .mantine-Select-input {
+  border-radius: 6px;
+  height: 32px;
+  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #334155;
+  padding: 0 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bn-static-toolbar .bn-toolbar select:hover,
+.bn-static-toolbar .bn-toolbar .mantine-Select-input:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.bn-static-toolbar .bn-toolbar select:focus,
+.bn-static-toolbar .bn-toolbar .mantine-Select-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  outline: none;
+}
+
+/* Custom divider between button groups */
+.bn-toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: #e2e8f0;
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* Tooltip styling for toolbar buttons */
+.bn-static-toolbar .bn-toolbar [data-tooltip] {
+  position: relative;
+}
+
+/* Responsive: wrap toolbar on smaller screens */
+@media (max-width: 640px) {
+  .bn-static-toolbar {
+    padding: 4px 6px;
+    gap: 2px;
+  }
+
+  .bn-static-toolbar .bn-toolbar.bn-formatting-toolbar {
+    gap: 1px;
+  }
+
+  .bn-static-toolbar .bn-toolbar button,
+  .bn-static-toolbar .bn-toolbar [data-test] {
+    min-width: 28px;
+    height: 28px;
+  }
+
+  .bn-toolbar-divider {
+    height: 20px;
+    margin: 0 4px;
+  }
+}
+

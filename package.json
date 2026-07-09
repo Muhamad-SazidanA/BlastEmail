@@ -6,14 +6,25 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:push-force": "prisma db push --force-reset"
   },
   "dependencies": {
+    "@blocknote/core": "0.34.0",
+    "@blocknote/mantine": "0.34.0",
+    "@blocknote/react": "0.34.0",
+    "@mantine/core": "7.16.2",
+    "@mantine/hooks": "7.16.2",
+    "@prisma/client": "^6.6.0",
+    "mysql2": "^3.11.0",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "prisma": "^6.6.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

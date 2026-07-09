@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Campaign {
+  id          Int       @id @default(autoincrement()) @db.UnsignedInt
+  campaignId  String    @unique @map("campaign_id") @db.VarChar(255)
+  name        String    @db.VarChar(500)
+  subject     String    @db.VarChar(1000)
+  content     String    @db.LongText
+  status      String    @default("DRAFT") @db.VarChar(20)
+  totalTarget Int       @default(0) @map("total_target") @db.Int
+  totalSent   Int       @default(0) @map("total_sent") @db.Int
+  totalFailed Int       @default(0) @map("total_failed") @db.Int
+  coverImg    String?   @map("cover_img") @db.Text
+  startedAt   DateTime? @map("started_at") @db.DateTime(0)
+  finishedAt  DateTime? @map("finished_at") @db.DateTime(0)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+
+  @@map("campaigns")
+}
+
+model RobotStatus {
+  id              Int     @id @default(autoincrement()) @db.UnsignedInt
+  robotName       String  @unique @map("robot_name") @db.VarChar(255)
+  senderEmail     String  @map("sender_email") @db.VarChar(255)
+  status          String  @default("IDLE") @db.VarChar(20) // IDLE | RUNNING | ERROR
+  currentCampaign String? @map("current_campaign") @db.VarChar(255)
+  totalTarget     Int     @default(0) @map("total_target") @db.Int
+  totalSent       Int     @default(0) @map("total_sent") @db.Int
+  totalFailed     Int     @default(0) @map("total_failed") @db.Int
+  lastError       String? @map("last_error") @db.Text
+
+  @@map("robot_status")
+}
+
+model User {
+  id        Int      @id @default(autoincrement()) @db.UnsignedInt
+  name      String   @db.VarChar(255)
+  email     String   @unique @db.VarChar(255)
+  password  String   @db.VarChar(255)
+  role      String   @default("user") @db.VarChar(50) // admin | user
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+
+  @@map("users")
+}
+
