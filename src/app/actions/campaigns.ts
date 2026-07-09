@@ -95,7 +95,7 @@ export async function triggerBlastAction(campaignId: string) {
       return { success: false, error: "Campaign tidak ditemukan." };
     }
 
-    // Update status ke SENDING dan isi startedAt (kembalikan hanya field aman)
+    // Update status ke SENDING dan isi startedAt
     const updatedCampaign = await db.campaign.update({
       where: { campaignId },
       data: {
@@ -111,8 +111,8 @@ export async function triggerBlastAction(campaignId: string) {
       }
     });
 
-    // Panggil webhook n8n blast
-    const webhookUrl = process.env.N8N_BLAST_WEBHOOK_URL || "http://localhost:5678/webhook/blast";
+    // Panggil webhook n8n blast dengan payload id_campaign saja
+    const webhookUrl = process.env.N8N_BLAST_WEBHOOK_URL || "http://localhost:5678/webhook/blast-email";
     
     const response = await fetch(webhookUrl, {
       method: "POST",
@@ -120,20 +120,31 @@ export async function triggerBlastAction(campaignId: string) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        campaignId: updatedCampaign.campaignId,
-        name: updatedCampaign.name,
-        subject: updatedCampaign.subject,
-        content: updatedCampaign.content,
-        status: updatedCampaign.status,
-        startedAt: new Date(), // Kirim tanggal saat ini yang valid
+        id_campaign: updatedCampaign.campaignId,
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Webhook n8n merespon dengan status: ${response.status}`);
+    // Coba parsing response body untuk mendapatkan status sukses/error detail
+    let resData: any = null;
+    try {
+      const rawText = await response.text();
+      if (rawText) {
+        const parsed = JSON.parse(rawText);
+        resData = Array.isArray(parsed) ? parsed[0] : parsed;
+      }
+    } catch (_) {}
+
+    // Jika response HTTP tidak OK atau response data mengindikasikan kegagalan
+    if (!response.ok || (resData && resData.success === false)) {
+      const errorMsg = resData?.message || resData?.error || `Webhook n8n merespon dengan status: ${response.status}`;
+      return {
+        success: false,
+        error: errorMsg,
+      };
     }
 
-    return { success: true, campaign: updatedCampaign };
+    const successMessage = resData?.message || `Blast email untuk campaign "${updatedCampaign.name}" berhasil dijalankan.`;
+    return { success: true, message: successMessage, campaign: updatedCampaign };
   } catch (error) {
     console.error("Failed to trigger blast:", error);
     return {
@@ -164,7 +175,7 @@ export async function triggerTestBlastAction(campaignId: string, testEmail: stri
       return { success: false, error: "Email target tidak valid." };
     }
 
-    // Panggil webhook n8n test blast
+    // Panggil webhook n8n test blast dengan payload id_campaign dan email
     const webhookUrl = process.env.N8N_TEST_BLAST_WEBHOOK_URL || "http://localhost:5678/webhook/test-blast";
     
     const response = await fetch(webhookUrl, {
@@ -173,19 +184,32 @@ export async function triggerTestBlastAction(campaignId: string, testEmail: stri
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        campaignId: campaign.campaignId,
-        name: campaign.name,
-        subject: campaign.subject,
-        content: campaign.content,
-        testEmail,
+        id_campaign: campaign.campaignId,
+        email: testEmail,
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Webhook n8n merespon dengan status: ${response.status}`);
+    // Coba parsing response body untuk mendapatkan status sukses/error detail
+    let resData: any = null;
+    try {
+      const rawText = await response.text();
+      if (rawText) {
+        const parsed = JSON.parse(rawText);
+        resData = Array.isArray(parsed) ? parsed[0] : parsed;
+      }
+    } catch (_) {}
+
+    // Jika response HTTP tidak OK atau response data mengindikasikan kegagalan
+    if (!response.ok || (resData && resData.success === false)) {
+      const errorMsg = resData?.message || resData?.error || `Webhook n8n merespon dengan status: ${response.status}`;
+      return {
+        success: false,
+        error: errorMsg,
+      };
     }
 
-    return { success: true };
+    const successMessage = resData?.message || "Email uji coba berhasil dikirim.";
+    return { success: true, message: successMessage };
   } catch (error) {
     console.error("Failed to trigger test blast:", error);
     return {
