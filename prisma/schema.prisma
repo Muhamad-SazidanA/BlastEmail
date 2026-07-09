@@ -12,7 +12,7 @@ datasource db {
 
 model Campaign {
   id          Int       @id @default(autoincrement()) @db.UnsignedInt
-  campaignId  String    @unique @map("campaign_id") @db.VarChar(255)
+  campaignId  String    @unique @map("campaign_id") @db.VarChar(191)
   name        String    @db.VarChar(500)
   subject     String    @db.VarChar(1000)
   content     String    @db.LongText
@@ -31,7 +31,7 @@ model Campaign {
 
 model RobotStatus {
   id              Int     @id @default(autoincrement()) @db.UnsignedInt
-  robotName       String  @unique @map("robot_name") @db.VarChar(255)
+  robotName       String  @unique @map("robot_name") @db.VarChar(191)
   senderEmail     String  @map("sender_email") @db.VarChar(255)
   status          String  @default("IDLE") @db.VarChar(20) // IDLE | RUNNING | ERROR
   currentCampaign String? @map("current_campaign") @db.VarChar(255)
@@ -46,7 +46,7 @@ model RobotStatus {
 model User {
   id        Int      @id @default(autoincrement()) @db.UnsignedInt
   name      String   @db.VarChar(255)
-  email     String   @unique @db.VarChar(255)
+  email     String   @unique @db.VarChar(191)
   password  String   @db.VarChar(255)
   role      String   @default("user") @db.VarChar(50) // admin | user
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)

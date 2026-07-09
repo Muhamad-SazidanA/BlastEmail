@@ -105,7 +105,6 @@ const USER_NAV: NavItem[] = [
   { label: "Dashboard",       href: "/Dashboard",         icon: <IcDashboard /> },
   { label: "Data Campaign",   href: "/DataCampaign",      icon: <IcList />      },
   { label: "Create Campaign", href: "/CreateCampaign",   icon: <IcCreate />    },
-  { label: "Blast Email",     href: "/BlastEmail",       icon: <IcBlast />     },
   { label: "Bot Progress",     href: "/BotProgress",       icon: <IcProgress />  },
 ];
 

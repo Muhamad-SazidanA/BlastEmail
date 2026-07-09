@@ -10,7 +10,7 @@ async function seedDefaultUsersIfNeeded() {
       CREATE TABLE IF NOT EXISTS users (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) NOT NULL UNIQUE,
+        email VARCHAR(191) NOT NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
         role VARCHAR(50) NOT NULL DEFAULT 'user',
         created_at DATETIME(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
@@ -73,14 +73,58 @@ export async function getUsersAction() {
   }
 }
 
+// Helper to get variation of email inputs (with or without dot in domain)
+function getEmailVariants(email: string): string[] {
+  const emailLower = email.trim().toLowerCase();
+  const variants = [emailLower];
+  
+  if (emailLower.endsWith("gmailcom")) {
+    variants.push(emailLower.replace("gmailcom", "gmail.com"));
+  }
+  if (emailLower.endsWith("gmail.com")) {
+    variants.push(emailLower.replace("gmail.com", "gmailcom"));
+  }
+
+  const parts = emailLower.split("@");
+  if (parts.length === 2) {
+    const domain = parts[1];
+    if (!domain.includes(".")) {
+      const tlds = ["com", "net", "org", "co", "id"];
+      for (const tld of tlds) {
+        if (domain.endsWith(tld) && !domain.endsWith("." + tld)) {
+          const mainDomain = domain.substring(0, domain.length - tld.length);
+          variants.push(`${parts[0]}@${mainDomain}.${tld}`);
+          break;
+        }
+      }
+    } else {
+      const tlds = ["com", "net", "org", "co", "id"];
+      for (const tld of tlds) {
+        if (domain.endsWith("." + tld)) {
+          const mainDomain = domain.substring(0, domain.length - tld.length - 1);
+          variants.push(`${parts[0]}@${mainDomain}${tld}`);
+          break;
+        }
+      }
+    }
+  }
+
+  return Array.from(new Set(variants));
+}
+
 export async function createUserAction(formData: { name: string; email: string; password: string; role: "admin" | "user" }) {
   try {
     await seedDefaultUsersIfNeeded();
     
-    // Check if email already exists
+    // Check if email already exists (using variants to be safe)
     const emailLower = formData.email.trim().toLowerCase();
-    const existing = await db.user.findUnique({
-      where: { email: emailLower }
+    const emailVariants = getEmailVariants(emailLower);
+    const existing = await db.user.findFirst({
+      where: {
+        email: {
+          in: emailVariants
+        }
+      }
     });
 
     if (existing) {
@@ -106,13 +150,15 @@ export async function createUserAction(formData: { name: string; email: string; 
 export async function loginUserAction(credentials: { email: string; password: string }) {
   try {
     await seedDefaultUsersIfNeeded();
-    const emailLower = credentials.email.trim().toLowerCase();
-    
-    // Normalize "BlastEAdmin@gmailcom" to "blasteadmin@gmail.com"
-    const normalizedEmail = emailLower === "blasteadmin@gmailcom" ? "blasteadmin@gmail.com" : emailLower;
+    const emailVariants = getEmailVariants(credentials.email);
 
-    const user = await db.user.findUnique({
-      where: { email: normalizedEmail }
+    // Search for any matching email configuration in the database using IN condition
+    const user = await db.user.findFirst({
+      where: {
+        email: {
+          in: emailVariants
+        }
+      }
     });
 
     if (!user || user.password !== credentials.password) {
