@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Layout from "@/components/Layout";
-import { createCampaignAction, triggerTestBlastAction } from "@/app/actions/campaigns";
+import { createCampaignAction, triggerTestBlastAction, getSpreadsheetConfigsAction } from "@/app/actions/campaigns";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor"),
@@ -106,10 +106,15 @@ function ConfirmSaveAndTestModal({
         </div>
         <h2 id="test-modal-title" className="modal-title">Simpan & Test Blast?</h2>
         <p className="modal-msg" style={{ margin: "8px 0 12px 0" }}>
-          Simpan campaign <strong>"{campaignName}"</strong> dan kirim email uji coba ke:
+          Simpan campaign <strong>"{campaignName}"</strong> dan kirim email uji coba.
         </p>
-        <div className="cc-field" style={{ marginTop: 8, textAlign: "left", marginBottom: 20 }}>
+
+        <div className="cc-field" style={{ textAlign: "left", marginBottom: 20 }}>
+          <label htmlFor="test-email-input" style={{ display: "block", fontSize: "0.85rem", fontWeight: "500", color: "#475569", marginBottom: 6 }}>
+            Email Target
+          </label>
           <input
+            id="test-email-input"
             type="email"
             className="cc-input"
             placeholder="nama@email.com"
@@ -117,7 +122,7 @@ function ConfirmSaveAndTestModal({
             onChange={(e) => setTestEmail(e.target.value)}
             required
             disabled={isSubmitting}
-            style={{ padding: "8px 12px", borderRadius: "8px" }}
+            style={{ padding: "8px 12px", borderRadius: "8px", width: "100%", boxSizing: "border-box" }}
           />
         </div>
         <div className="modal-actions">
@@ -161,6 +166,36 @@ export default function CreateCampaignPage() {
   const [success,      setSuccess]      = useState(false);
   const [showTestConfirm, setShowTestConfirm] = useState(false);
   const [testEmail, setTestEmail] = useState("");
+  const [sheetConfigs, setSheetConfigs] = useState<any[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState("");
+
+  useEffect(() => {
+    const loadSheetConfigs = async () => {
+      try {
+        const result = await getSpreadsheetConfigsAction();
+        if (result.success && result.configs) {
+          setSheetConfigs(result.configs);
+          if (result.configs.length > 0) {
+            setSelectedSheet(result.configs[0].sheet_name || "");
+          }
+        }
+      } catch (err) {
+        console.error("Gagal memuat database spreadsheet:", err);
+      }
+    };
+    loadSheetConfigs();
+  }, []);
+
+  useEffect(() => {
+    if (showTestConfirm) {
+      setTestEmail("");
+      if (sheetConfigs && sheetConfigs.length > 0) {
+        setSelectedSheet(sheetConfigs[0].sheet_name || "");
+      } else {
+        setSelectedSheet("");
+      }
+    }
+  }, [showTestConfirm, sheetConfigs]);
 
   const campaignId = toSlug(name);
 
@@ -247,7 +282,8 @@ export default function CreateCampaignPage() {
       }
 
       // 2. Kirim Test Blast
-      const testResult = await triggerTestBlastAction(campaignId, testEmail);
+      const defaultSheet = sheetConfigs[0]?.sheet_name || "";
+      const testResult = await triggerTestBlastAction(campaignId, testEmail, defaultSheet);
 
       if (testResult.success) {
         setSuccess(true);

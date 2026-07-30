@@ -60,7 +60,7 @@ export default function DashboardPage() {
         setError(res.error ?? "Gagal memuat statistik dashboard.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
+      setError("Terjadi kesalahan saat memuat data. Silakan refresh halaman.");
     } finally {
       setIsLoading(false);
     }

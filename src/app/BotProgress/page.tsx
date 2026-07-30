@@ -20,30 +20,53 @@ export default function BotProgressPage() {
   const [robots, setRobots] = useState<RobotStatusData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Function to load robot statuses
   const fetchStatuses = async (showLoading = false) => {
     if (showLoading) setIsLoading(true);
-    setError(null);
+    if (showLoading) setError(null);
     try {
       const result = await getRobotStatusesAction();
       if (result.success && result.data) {
-        setRobots(result.data as RobotStatusData[]);
+        setRobots((prevRobots) => {
+          if (prevRobots.length > 0) {
+            prevRobots.forEach((oldBot) => {
+              const newBot = (result.data as RobotStatusData[]).find((b) => b.id === oldBot.id);
+              if (newBot && oldBot.status === "RUNNING" && newBot.status !== "RUNNING") {
+                if (newBot.status === "IDLE") {
+                  setSuccess(`Robot "${newBot.robotName}" telah selesai memproses pengiriman.`);
+                  setTimeout(() => setSuccess(null), 5000);
+                } else if (newBot.status === "ERROR") {
+                  setError(`Robot "${newBot.robotName}" terhenti karena kesalahan: ${newBot.lastError || "Unknown error"}`);
+                  setTimeout(() => setError(null), 5000);
+                }
+              }
+            });
+          }
+          return result.data as RobotStatusData[];
+        });
       } else {
-        setError(result.error ?? "Gagal memuat status robot.");
+        if (showLoading) setError(result.error ?? "Gagal memuat status robot.");
       }
     } catch (err) {
-      setError("Gagal terhubung ke database.");
+      if (showLoading) setError("Gagal terhubung ke database.");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
   };
 
-  // Load on mount
+  // Load on mount & setup auto-polling
   useEffect(() => {
     fetchStatuses(true);
+
+    const interval = setInterval(() => {
+      fetchStatuses(false);
+    }, 4000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleManualRefresh = () => {
@@ -51,16 +74,7 @@ export default function BotProgressPage() {
     fetchStatuses(false);
   };
 
-  // Helper: Calculate progress percentage
-  const calculateProgress = (sent: any, failed: any, target: any) => {
-    const s = Number(sent || 0);
-    const f = Number(failed || 0);
-    const t = Number(target || 0);
-    const totalProcessed = s + f;
-    if (!t || t === 0) return 0;
-    const pct = (totalProcessed / t) * 100;
-    return Math.min(Math.round(pct), 100);
-  };
+
 
   return (
     <Layout
@@ -156,17 +170,16 @@ export default function BotProgressPage() {
                   <th>Robot Info</th>
                   <th style={{ textAlign: "center" }} className="highlight-column">Status</th>
                   <th style={{ textAlign: "center" }}>Current Campaign</th>
-                  <th style={{ textAlign: "center" }}>Progress</th>
                   <th style={{ textAlign: "center" }}>Target</th>
                   <th style={{ textAlign: "center" }} className="highlight-column">Sent</th>
-                  <th style={{ textAlign: "center" }}>Failed</th>
                 </tr>
               </thead>
               <tbody>
                 {robots.map((bot) => {
-                  const pct = calculateProgress(bot.totalSent, bot.totalFailed, bot.totalTarget);
                   const isError = bot.status === "ERROR";
                   const isRunning = bot.status === "RUNNING";
+                  const displayTarget = isRunning ? bot.totalTarget : 0;
+                  const displaySent = isRunning ? bot.totalSent : 0;
 
                   return (
                     <React.Fragment key={bot.id}>
@@ -196,35 +209,19 @@ export default function BotProgressPage() {
                           )}
                         </td>
                         
-                        {/* Progress (Centered) */}
-                        <td style={{ minWidth: 180, textAlign: "center" }}>
-                          <div className="progress-cell-wrapper" style={{ justifyContent: "center" }}>
-                            <div className="progress-bar-bg">
-                              <div
-                                className={`progress-bar-fill fill-${bot.status.toLowerCase()}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <span className="progress-pct-text">{pct}%</span>
-                          </div>
-                        </td>
-                        
                         {/* Target */}
-                        <td style={{ textAlign: "center" }} className="font-semibold">{bot.totalTarget}</td>
+                        <td style={{ textAlign: "center" }} className="font-semibold">{displayTarget}</td>
                         
                         {/* Sent (Highlighted) */}
                         <td style={{ textAlign: "center", color: "#166534" }} className="font-semibold highlight-cell-val">
-                          {bot.totalSent}
+                          {displaySent}
                         </td>
-                        
-                        {/* Failed */}
-                        <td style={{ textAlign: "center", color: "#991b1b" }} className="font-semibold">{bot.totalFailed}</td>
                       </tr>
 
                       {/* ── Error Details Sub-row ── */}
                       {isError && bot.lastError && (
                         <tr className="error-detail-row">
-                          <td colSpan={7}>
+                          <td colSpan={5}>
                             <div className="error-alert-box animate-slide-down">
                               <div className="error-alert-title">
                                 <span>❌</span> Detail Error ({bot.robotName}):

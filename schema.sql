@@ -40,6 +40,16 @@ CREATE INDEX IF NOT EXISTS idx_campaigns_status  ON campaigns (status);
 CREATE INDEX IF NOT EXISTS idx_campaigns_created ON campaigns (created_at DESC);
 
 -- ------------------------------------------------------------
+--  Table: spreadsheet_config
+--  Stores sheet names for blast database selection
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS spreadsheet_config (
+    id          INT UNSIGNED  NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    sheet_name  VARCHAR(255)  NOT NULL,
+    created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
 --  Example seed row
 -- ------------------------------------------------------------
 -- INSERT INTO campaigns (campaign_id, name, subject, content)

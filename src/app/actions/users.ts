@@ -2,6 +2,22 @@
 
 import { db } from "@/lib/db";
 
+/**
+ * Converts raw technical error messages to user-friendly Indonesian messages.
+ */
+function friendlyError(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (msg.includes("Can't reach database server") || msg.includes("ECONNREFUSED"))
+    return "Tidak dapat terhubung ke database. Pastikan server database sudah aktif dan berjalan.";
+  if (msg.includes("Connection refused") || msg.includes("connect ETIMEDOUT"))
+    return "Koneksi ke database gagal (timeout). Silakan coba lagi dalam beberapa saat.";
+  if (msg.includes("doesn't exist") || msg.includes("does not exist"))
+    return "Struktur database belum lengkap. Hubungi administrator untuk menjalankan migrasi database.";
+  if (msg.includes("PrismaClientInitializationError"))
+    return "Gagal menginisialisasi koneksi database. Pastikan server database aktif.";
+  return "Terjadi kesalahan pada sistem. Silakan coba lagi atau hubungi administrator.";
+}
+
 // Helper to seed default accounts if database is empty
 async function seedDefaultUsersIfNeeded() {
   try {
@@ -69,7 +85,7 @@ export async function getUsersAction() {
     return { success: true, users: formatted };
   } catch (error) {
     console.error("Failed to get users:", error);
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    return { success: false, error: friendlyError(error) };
   }
 }
 
@@ -143,7 +159,7 @@ export async function createUserAction(formData: { name: string; email: string; 
     return { success: true, user: newUser };
   } catch (error) {
     console.error("Failed to create user:", error);
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    return { success: false, error: friendlyError(error) };
   }
 }
 
@@ -175,6 +191,6 @@ export async function loginUserAction(credentials: { email: string; password: st
     };
   } catch (error) {
     console.error("Failed to login user:", error);
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    return { success: false, error: friendlyError(error) };
   }
 }

@@ -23,8 +23,8 @@ model Campaign {
   coverImg    String?   @map("cover_img") @db.Text
   startedAt   DateTime? @map("started_at") @db.DateTime(0)
   finishedAt  DateTime? @map("finished_at") @db.DateTime(0)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  createdAt   DateTime? @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@map("campaigns")
 }
@@ -53,5 +53,15 @@ model User {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@map("users")
+}
+
+model SpreadsheetConfig {
+  id        Int      @id @default(autoincrement()) @db.UnsignedInt
+  sheetName String   @map("sheet_name") @db.VarChar(255)
+  sheetId   String   @map("sheet_id") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+
+  @@map("spreadsheet_config")
 }
 

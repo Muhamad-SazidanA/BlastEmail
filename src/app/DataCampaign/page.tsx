@@ -10,6 +10,7 @@ import {
   deleteCampaignAction,
   triggerBlastAction,
   triggerTestBlastAction,
+  getSpreadsheetConfigsAction,
 } from "@/app/actions/campaigns";
 
 const BlockNoteEditor = dynamic(
@@ -30,13 +31,38 @@ interface Campaign {
 interface BlastModalProps {
   isOpen: boolean;
   campaignName: string;
-  onConfirm: () => void;
+  onConfirm: (sheetName: string) => void;
   onCancel: () => void;
   isSubmitting: boolean;
+  sheetConfigs: any[];
 }
 
-function ConfirmBlastModal({ isOpen, campaignName, onConfirm, onCancel, isSubmitting }: BlastModalProps) {
+function ConfirmBlastModal({ isOpen, campaignName, onConfirm, onCancel, isSubmitting, sheetConfigs }: BlastModalProps) {
+  const [selectedSheet, setSelectedSheet] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      if (sheetConfigs && sheetConfigs.length > 0) {
+        setSelectedSheet(sheetConfigs[0].sheet_name || "");
+      } else {
+        setSelectedSheet("");
+      }
+    }
+  }, [isOpen, sheetConfigs]);
+
   if (!isOpen) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSheet) {
+      setError("Pilih database blast terlebih dahulu.");
+      return;
+    }
+    onConfirm(selectedSheet);
+  };
+
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal-box" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -47,27 +73,58 @@ function ConfirmBlastModal({ isOpen, campaignName, onConfirm, onCancel, isSubmit
           </svg>
         </div>
         <h2 className="modal-title">Mulai Blast Email?</h2>
-        <p className="modal-msg" style={{ margin: "8px 0 20px 0" }}>
+        <p className="modal-msg" style={{ margin: "8px 0 16px 0" }}>
           Mulai pengiriman massal untuk campaign <strong>"{campaignName}"</strong>?
         </p>
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="btn btn-outline"
-            onClick={onCancel}
-            disabled={isSubmitting}
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            className="btn btn-blue"
-            onClick={onConfirm}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Memproses..." : "Ya, Mulai"}
-          </button>
-        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="cc-field" style={{ textAlign: "left", marginBottom: 20 }}>
+            <label htmlFor="blast-sheet-select" style={{ display: "block", fontSize: "0.85rem", fontWeight: "500", color: "#475569", marginBottom: 6 }}>
+              Pilih Database Blast (Spreadsheet)
+            </label>
+            <select
+              id="blast-sheet-select"
+              className="cc-input"
+              value={selectedSheet}
+              onChange={(e) => {
+                setSelectedSheet(e.target.value);
+                setError(null);
+              }}
+              disabled={isSubmitting}
+              required
+              style={{ padding: "8px 12px", borderRadius: "8px", width: "100%", boxSizing: "border-box", background: "#fff", border: "1px solid #cbd5e1" }}
+            >
+              {sheetConfigs.length === 0 ? (
+                <option value="">Tidak ada database spreadsheet ditemukan</option>
+              ) : (
+                sheetConfigs.map((config) => (
+                  <option key={config.id || config.sheet_name} value={config.sheet_name}>
+                    {config.sheet_name}
+                  </option>
+                ))
+              )}
+            </select>
+            {error && <div style={{ color: "#ef4444", fontSize: "0.72rem", marginTop: 4 }}>{error}</div>}
+          </div>
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={onCancel}
+              disabled={isSubmitting}
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="btn btn-blue"
+              disabled={isSubmitting || !selectedSheet}
+            >
+              {isSubmitting ? "Memproses..." : "Ya, Mulai"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -117,10 +174,13 @@ function ConfirmTestModal({ isOpen, campaignName, onConfirm, onCancel, isSubmitt
         </div>
         <h2 className="modal-title">Kirim Test Blast?</h2>
         <p className="modal-msg" style={{ margin: "8px 0 12px 0" }}>
-          Kirim email uji coba campaign <strong>"{campaignName}"</strong> ke:
+          Kirim email uji coba campaign <strong>"{campaignName}"</strong>.
         </p>
         <form onSubmit={handleSubmit}>
           <div className="cc-field" style={{ textAlign: "left", marginBottom: 20 }}>
+            <label htmlFor="test-email-input" style={{ display: "block", fontSize: "0.85rem", fontWeight: "500", color: "#475569", marginBottom: 6 }}>
+              Email Target
+            </label>
             <input
               id="test-email-input"
               type="email"
@@ -138,6 +198,7 @@ function ConfirmTestModal({ isOpen, campaignName, onConfirm, onCancel, isSubmitt
             />
             {error && <div className="field-error-msg" style={{ color: "#ef4444", fontSize: "0.72rem", marginTop: 4 }}>{error}</div>}
           </div>
+
           <div className="modal-actions">
             <button
               type="button"
@@ -150,7 +211,7 @@ function ConfirmTestModal({ isOpen, campaignName, onConfirm, onCancel, isSubmitt
             <button
               type="submit"
               className="btn btn-blue"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !email.trim()}
             >
               {isSubmitting ? "Mengirim..." : "Ya, Kirim"}
             </button>
@@ -233,26 +294,92 @@ export default function DataCampaignPage() {
   const [editEditorMode, setEditEditorMode] = useState<"manual" | "html">("manual");
   const [editError, setEditError] = useState<string | null>(null);
 
-  // Load campaigns from database
+  // Spreadsheet configs state
+  const [sheetConfigs, setSheetConfigs] = useState<any[]>([]);
+
+
+
+  // Load campaigns from database (with retry for cold-start resilience)
   const loadCampaigns = async (showLoading = false) => {
     if (showLoading) setIsLoading(true);
-    setError(null);
-    try {
-      const result = await getCampaignsAction();
-      if (result.success && result.campaigns) {
-        setCampaigns(result.campaigns as Campaign[]);
-      } else {
-        setError(result.error ?? "Gagal memuat data campaign.");
+    if (showLoading) setError(null);
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await getCampaignsAction();
+        if (result.success && result.campaigns) {
+          setCampaigns((prevCampaigns) => {
+            if (prevCampaigns.length > 0) {
+              prevCampaigns.forEach((oldC) => {
+                const newC = result.campaigns!.find((c: any) => c.campaignId === oldC.campaignId);
+                if (newC && oldC.status === "SENDING" && newC.status !== "SENDING") {
+                  if (newC.status === "DONE") {
+                    setSuccess(`Campaign "${newC.name}" selesai dikirim dengan sukses!`);
+                    setTimeout(() => setSuccess(null), 5000);
+                  } else if (newC.status === "FAILED") {
+                    setError(`Pengiriman campaign "${newC.name}" terhenti atau gagal!`);
+                    setTimeout(() => setError(null), 5000);
+                  }
+                }
+              });
+            }
+            return result.campaigns as Campaign[];
+          });
+          setIsLoading(false);
+          return;
+        } else {
+          if (attempt === 1 && showLoading) {
+            setError(result.error ?? "Gagal memuat data campaign.");
+          }
+        }
+      } catch {
+        if (attempt === 1 && showLoading) {
+          setError("Koneksi database gagal. Silakan refresh halaman atau cek server database.");
+        }
       }
-    } catch (err) {
-      setError("Koneksi database gagal.");
-    } finally {
-      setIsLoading(false);
+      // Wait 1s before retry
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    setIsLoading(false);
+  };
+
+  // Load sheet configs from database (non-critical, silent retry)
+  const loadSheetConfigs = async (retries = 2) => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const result = await getSpreadsheetConfigsAction();
+        if (result.success && result.configs) {
+          setSheetConfigs(result.configs);
+          return;
+        }
+        // Non-critical: warn only, don't surface to error overlay
+        if (attempt === retries - 1) {
+          console.warn("[Blast] Spreadsheet configs belum tersedia:", result.error);
+        }
+      } catch {
+        if (attempt === retries - 1) {
+          console.warn("[Blast] Spreadsheet configs gagal dimuat, akan dicoba saat blast.");
+        }
+      }
+      // Wait 1s before retry
+      if (attempt < retries - 1) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
     }
   };
 
   useEffect(() => {
     loadCampaigns(true);
+    loadSheetConfigs();
+
+    // Auto-polling every 4 seconds to sync status live
+    const interval = setInterval(() => {
+      loadCampaigns(false);
+    }, 4000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Handle Edit Action Click
@@ -302,14 +429,14 @@ export default function DataCampaignPage() {
   };
 
   // Submit Blast Action
-  const handleBlastConfirm = async () => {
+  const handleBlastConfirm = async (sheetName: string) => {
     if (!blastCampaign) return;
     setIsSubmitting(true);
     setError(null);
     try {
-      const result = await triggerBlastAction(blastCampaign.campaignId);
+      const result = await triggerBlastAction(blastCampaign.campaignId, sheetName);
       if (result.success) {
-        setSuccess(`Blast email untuk campaign "${blastCampaign.name}" berhasil dipicu.`);
+        setSuccess(`Blast email untuk campaign "${blastCampaign.name}" dengan database "${sheetName}" berhasil dipicu.`);
         setBlastCampaign(null);
         loadCampaigns(false);
         setTimeout(() => setSuccess(null), 3000);
@@ -330,10 +457,11 @@ export default function DataCampaignPage() {
     if (!testBlastCampaign) return;
     setIsSubmitting(true);
     setError(null);
+    const defaultSheet = sheetConfigs[0]?.sheet_name || "";
     try {
-      const result = await triggerTestBlastAction(testBlastCampaign.campaignId, targetEmail);
+      const result = await triggerTestBlastAction(testBlastCampaign.campaignId, targetEmail, defaultSheet);
       if (result.success) {
-        setSuccess(`Email uji coba campaign "${testBlastCampaign.name}" berhasil dikirim ke ${targetEmail}.`);
+        setSuccess(`Email uji coba campaign "${testBlastCampaign.name}" dengan database "${defaultSheet}" berhasil dikirim ke ${targetEmail}.`);
         setTestBlastCampaign(null);
         setTimeout(() => setSuccess(null), 3000);
       } else {
@@ -602,23 +730,132 @@ export default function DataCampaignPage() {
         background-color: #fafbfc;
       }
 
-      /* Sticky Action Column to freeze the "Aksi" column */
-      .bp-table th:last-child,
-      .bp-table td:last-child {
+      /* Sticky last 2 columns (Blast + Aksi) - truly frozen */
+      .bp-table th.col-aksi,
+      .bp-table td.col-aksi {
         position: sticky;
         right: 0;
         z-index: 10;
+        background: #f8fafc;
+      }
+      .bp-table td.col-aksi {
+        background: #ffffff;
+      }
+      .bp-table th.col-blast,
+      .bp-table td.col-blast {
+        position: sticky;
+        right: 140px;
+        z-index: 11;
+        background: #f8fafc;
         box-shadow: -6px 0 10px -4px rgba(0, 0, 0, 0.08);
         border-left: 1px solid #e2e8f0;
       }
-      .bp-table th:last-child {
-        background: #f8fafc !important;
+      .bp-table td.col-blast {
+        background: #ffffff;
       }
-      .bp-table td:last-child {
-        background: #ffffff !important;
-      }
-      .bp-table tbody tr:hover td:last-child {
+      .bp-table tbody tr:hover td.col-aksi,
+      .bp-table tbody tr:hover td.col-blast {
         background-color: #fafbfc !important;
+      }
+
+      /* ── Preview Modal ── */
+      .preview-modal-box {
+        background: #ffffff;
+        border-radius: 16px;
+        width: min(680px, 94vw);
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        overflow: hidden;
+        animation: modalIn 0.2s ease-out;
+      }
+      .preview-modal-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 20px 24px 12px 24px;
+        border-bottom: 1px solid #f1f5f9;
+      }
+      .preview-modal-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0;
+      }
+      .preview-modal-subtitle {
+        font-size: 0.78rem;
+        color: #94a3b8;
+        margin: 2px 0 0 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .preview-close-btn {
+        width: 34px; height: 34px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #64748b;
+        transition: all 0.15s;
+        flex-shrink: 0;
+      }
+      .preview-close-btn:hover {
+        color: #dc2626;
+        border-color: #fecaca;
+        background: #fef2f2;
+      }
+      .preview-email-meta {
+        padding: 14px 24px;
+        background: #f8fafc;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .preview-email-meta-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8rem;
+      }
+      .preview-email-meta-label {
+        font-weight: 600;
+        color: #475569;
+        min-width: 55px;
+      }
+      .preview-email-meta-value {
+        color: #1e293b;
+        word-break: break-word;
+      }
+      .preview-email-body-wrapper {
+        flex: 1;
+        overflow: auto;
+        min-height: 300px;
+        max-height: 55vh;
+        background: #f1f5f9;
+        padding: 20px;
+      }
+      .preview-email-body {
+        background: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        min-height: 280px;
+        overflow: hidden;
+      }
+      .preview-email-body iframe {
+        width: 100%;
+        min-height: 400px;
+        border: none;
+      }
+      .preview-modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 24px;
+        border-top: 1px solid #f1f5f9;
       }
 
       /* Text line clamping */
@@ -687,6 +924,11 @@ export default function DataCampaignPage() {
         color: #10b981;
         border-color: #a7f3d0;
         background: #ecfdf5;
+      }
+      .detail-btn:hover:not(:disabled) {
+        color: #7c3aed;
+        border-color: #c4b5fd;
+        background: #f5f3ff;
       }
       .delete-btn:hover:not(:disabled) {
         color: #dc2626;
@@ -1146,8 +1388,9 @@ export default function DataCampaignPage() {
                   <th style={{ textAlign: "center" }}>Campaign ID</th>
                   <th>Campaign Name</th>
                   <th>Subject</th>
-                  <th style={{ textAlign: "center" }}>Status</th>
-                  <th style={{ textAlign: "center", width: 180 }}>Aksi</th>
+                  <th style={{ textAlign: "center", width: 80 }}>Status</th>
+                  <th className="col-blast" style={{ textAlign: "center", width: 100 }}>Blast</th>
+                  <th className="col-aksi" style={{ textAlign: "center", width: 140 }}>Aksi</th>
                 </tr>
               </thead>
               <tbody>
@@ -1172,21 +1415,21 @@ export default function DataCampaignPage() {
                       </td>
 
                       {/* Subject */}
-                      <td style={{ minWidth: 240, maxWidth: 320, color: "#64748b" }}>
+                      <td style={{ minWidth: 180, maxWidth: 260, color: "#64748b" }}>
                         <div className="clamp-text-2" title={c.subject}>
                           {c.subject}
                         </div>
                       </td>
 
                       {/* Status */}
-                      <td style={{ textAlign: "center" }}>
+                      <td style={{ textAlign: "center", width: 80 }}>
                         <span className={`status-pill pill-${c.status.toLowerCase()}`}>
                           {c.status}
                         </span>
                       </td>
 
-                      {/* Actions (4 buttons: Blast, Test, Edit, Delete) */}
-                      <td style={{ textAlign: "center" }}>
+                      {/* Blast buttons column */}
+                      <td className="col-blast" style={{ textAlign: "center" }}>
                         <div className="action-buttons-wrapper">
                           <button
                             type="button"
@@ -1210,6 +1453,23 @@ export default function DataCampaignPage() {
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                               <path d="M4.7 22h14.6c.9 0 1.4-1 .8-1.7L13 10.4V4.5c0-.8.6-1.5 1.4-1.5h1.1a1 1 0 0 0 0-2H8.5a1 1 0 0 0 0 2H9.6c.8 0 1.4.7 1.4 1.5v5.9L4 20.3c-.6.7-.1 1.7.7 1.7z"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Actions (Detail, Edit, Delete) */}
+                      <td className="col-aksi" style={{ textAlign: "center" }}>
+                        <div className="action-buttons-wrapper">
+                          <button
+                            type="button"
+                            className="action-btn detail-btn"
+                            title="Detail Preview"
+                            onClick={() => window.open(`/api/preview/${c.campaignId}`, '_blank')}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
                             </svg>
                           </button>
 
@@ -1258,6 +1518,7 @@ export default function DataCampaignPage() {
         onConfirm={handleBlastConfirm}
         onCancel={() => setBlastCampaign(null)}
         isSubmitting={isSubmitting}
+        sheetConfigs={sheetConfigs}
       />
 
       {/* ── Confirm Test Blast Modal ── */}
@@ -1277,6 +1538,8 @@ export default function DataCampaignPage() {
         onCancel={() => setDeleteCampaign(null)}
         isSubmitting={isSubmitting}
       />
+
+
 
       {/* Stylesheet styles */}
       {renderStyles()}

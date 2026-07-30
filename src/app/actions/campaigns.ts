@@ -2,6 +2,49 @@
 
 import { db } from "@/lib/db";
 
+/**
+ * Converts raw technical error messages to user-friendly Indonesian messages.
+ * This prevents non-IT users from seeing Prisma/SQL/network internals.
+ */
+function friendlyError(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+
+  // Database connection errors
+  if (msg.includes("Can't reach database server") || msg.includes("ECONNREFUSED")) {
+    return "Tidak dapat terhubung ke database. Pastikan server database sudah aktif dan berjalan.";
+  }
+  if (msg.includes("Connection refused") || msg.includes("connect ETIMEDOUT")) {
+    return "Koneksi ke database gagal (timeout). Silakan coba lagi dalam beberapa saat.";
+  }
+  if (msg.includes("Access denied")) {
+    return "Akses ke database ditolak. Hubungi administrator untuk memeriksa konfigurasi.";
+  }
+
+  // Table/schema errors
+  if (msg.includes("doesn't exist") || msg.includes("does not exist")) {
+    return "Struktur database belum lengkap. Hubungi administrator untuk menjalankan migrasi database.";
+  }
+  if (msg.includes("Unknown column") || msg.includes("Unknown field")) {
+    return "Terdapat ketidaksesuaian struktur database. Hubungi administrator.";
+  }
+
+  // Prisma-specific
+  if (msg.includes("PrismaClientInitializationError")) {
+    return "Gagal menginisialisasi koneksi database. Pastikan server database aktif.";
+  }
+  if (msg.includes("PrismaClientKnownRequestError") || msg.includes("Raw query failed")) {
+    return "Terjadi kesalahan saat memproses data. Silakan coba lagi atau hubungi administrator.";
+  }
+
+  // n8n / webhook errors
+  if (msg.includes("fetch failed") || msg.includes("ECONNREFUSED") || msg.includes("Failed to fetch") || msg.includes("UNABLE_TO_VERIFY") || msg.includes("CERT_")) {
+    return `Gagal menghubungi server otomasi n8n (${msg}). Pastikan server n8n aktif dan URL webhook dapat diakses.`;
+  }
+
+  // Fallback: still keep it clean
+  return "Terjadi kesalahan pada sistem. Silakan coba lagi atau hubungi administrator.";
+}
+
 export interface CampaignInput {
   campaign_id: string;
   name: string;
@@ -50,7 +93,7 @@ export async function createCampaignAction(data: CampaignInput) {
     console.error("Failed to create campaign:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: friendlyError(error),
     };
   }
 }
@@ -73,12 +116,12 @@ export async function getCampaignsAction() {
     console.error("Failed to fetch campaigns:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: friendlyError(error),
     };
   }
 }
 
-export async function triggerBlastAction(campaignId: string) {
+export async function triggerBlastAction(campaignId: string, sheetName: string) {
   try {
     const campaign = await db.campaign.findUnique({
       where: { campaignId },
@@ -93,6 +136,22 @@ export async function triggerBlastAction(campaignId: string) {
 
     if (!campaign) {
       return { success: false, error: "Campaign tidak ditemukan." };
+    }
+
+    // Ambil sheet_id dari tabel spreadsheet_config jika sheetName diisi
+    let sheetId = "";
+    if (sheetName) {
+      try {
+        const sheetConfigs = await db.$queryRawUnsafe<any[]>(
+          "SELECT sheet_id as sheetId FROM spreadsheet_config WHERE sheet_name = ? LIMIT 1",
+          sheetName
+        );
+        if (sheetConfigs && sheetConfigs.length > 0) {
+          sheetId = sheetConfigs[0].sheetId || "";
+        }
+      } catch (err) {
+        console.warn("Gagal mengambil sheet_id dari spreadsheet_config:", err);
+      }
     }
 
     // Update status ke SENDING dan isi startedAt
@@ -111,23 +170,40 @@ export async function triggerBlastAction(campaignId: string) {
       }
     });
 
-    // Panggil webhook n8n blast dengan payload id_campaign saja
+    // Panggil webhook n8n blast dengan payload id_campaign dan sheet_name
     const webhookUrl = process.env.N8N_BLAST_WEBHOOK_URL || "http://localhost:5678/webhook/blast-email";
     
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        campaign_id: updatedCampaign.campaignId,
-      }),
-    });
-
-    // Coba parsing response body untuk mendapatkan status sukses/error detail
-    let resData: any = null;
+    let response: Response;
     try {
-      const rawText = await response.text();
+      response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          campaign_id: updatedCampaign.campaignId,
+          sheet_name: sheetName,
+        }),
+      });
+    } catch (fetchErr: any) {
+      console.error("n8n fetch connection error:", fetchErr);
+      await db.campaign.update({
+        where: { campaignId },
+        data: { status: "FAILED" },
+      }).catch(() => {});
+
+      const detail = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+      return {
+        success: false,
+        error: `Gagal terhubung ke server n8n (${detail}). Pastikan URL (${webhookUrl}) valid, server n8n aktif, dan dapat dijangkau.`,
+      };
+    }
+
+    // Parsing response body
+    let resData: any = null;
+    let rawText = "";
+    try {
+      rawText = await response.text();
       if (rawText) {
         const parsed = JSON.parse(rawText);
         resData = Array.isArray(parsed) ? parsed[0] : parsed;
@@ -136,7 +212,22 @@ export async function triggerBlastAction(campaignId: string) {
 
     // Jika response HTTP tidak OK atau response data mengindikasikan kegagalan
     if (!response.ok || (resData && resData.success === false)) {
-      const errorMsg = resData?.message || resData?.error || `Webhook n8n merespon dengan status: ${response.status}`;
+      await db.campaign.update({
+        where: { campaignId },
+        data: { status: "FAILED" },
+      }).catch(() => {});
+
+      let errorMsg = resData?.message || resData?.error;
+      if (!errorMsg) {
+        if (response.status === 404) {
+          errorMsg = `Webhook n8n tidak ditemukan (HTTP 404). Pastikan Workflow di n8n sudah di-Aktifkan (Active/ON) dan URL webhook (${webhookUrl}) sesuai.`;
+        } else if (response.status === 500) {
+          errorMsg = `Server n8n mengalami error internal (HTTP 500). Periksa log node di n8n.`;
+        } else {
+          errorMsg = `Webhook n8n merespon dengan status: ${response.status} ${response.statusText}`;
+        }
+      }
+
       return {
         success: false,
         error: errorMsg,
@@ -147,14 +238,20 @@ export async function triggerBlastAction(campaignId: string) {
     return { success: true, message: successMessage, campaign: updatedCampaign };
   } catch (error) {
     console.error("Failed to trigger blast:", error);
+    try {
+      await db.campaign.update({
+        where: { campaignId },
+        data: { status: "FAILED" },
+      });
+    } catch (_) {}
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Gagal memicu blast email. Pastikan n8n aktif.",
+      error: friendlyError(error),
     };
   }
 }
 
-export async function triggerTestBlastAction(campaignId: string, testEmail: string) {
+export async function triggerTestBlastAction(campaignId: string, testEmail: string, sheetName: string) {
   try {
     const campaign = await db.campaign.findUnique({
       where: { campaignId },
@@ -175,24 +272,35 @@ export async function triggerTestBlastAction(campaignId: string, testEmail: stri
       return { success: false, error: "Email target tidak valid." };
     }
 
-    // Panggil webhook n8n test blast dengan payload id_campaign dan email
+    // Panggil webhook n8n test blast dengan payload id_campaign dan email saja
     const webhookUrl = process.env.N8N_TEST_BLAST_WEBHOOK_URL || "http://localhost:5678/webhook/test-blast";
     
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        campaign_id: campaign.campaignId,
-        email: testEmail,
-      }),
-    });
-
-    // Coba parsing response body untuk mendapatkan status sukses/error detail
-    let resData: any = null;
+    let response: Response;
     try {
-      const rawText = await response.text();
+      response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          campaign_id: campaign.campaignId,
+          email: testEmail,
+        }),
+      });
+    } catch (fetchErr: any) {
+      console.error("n8n test blast fetch connection error:", fetchErr);
+      const detail = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+      return {
+        success: false,
+        error: `Gagal terhubung ke server n8n (${detail}). Pastikan URL (${webhookUrl}) valid, server n8n aktif, dan dapat dijangkau.`,
+      };
+    }
+
+    // Parsing response body
+    let resData: any = null;
+    let rawText = "";
+    try {
+      rawText = await response.text();
       if (rawText) {
         const parsed = JSON.parse(rawText);
         resData = Array.isArray(parsed) ? parsed[0] : parsed;
@@ -201,7 +309,16 @@ export async function triggerTestBlastAction(campaignId: string, testEmail: stri
 
     // Jika response HTTP tidak OK atau response data mengindikasikan kegagalan
     if (!response.ok || (resData && resData.success === false)) {
-      const errorMsg = resData?.message || resData?.error || `Webhook n8n merespon dengan status: ${response.status}`;
+      let errorMsg = resData?.message || resData?.error;
+      if (!errorMsg) {
+        if (response.status === 404) {
+          errorMsg = `Webhook test n8n tidak ditemukan (HTTP 404). Pastikan Workflow di n8n sudah di-Aktifkan (Active/ON) dan URL webhook (${webhookUrl}) sesuai.`;
+        } else if (response.status === 500) {
+          errorMsg = `Server n8n mengalami error internal (HTTP 500). Periksa log node di n8n.`;
+        } else {
+          errorMsg = `Webhook n8n merespon dengan status: ${response.status} ${response.statusText}`;
+        }
+      }
       return {
         success: false,
         error: errorMsg,
@@ -214,7 +331,7 @@ export async function triggerTestBlastAction(campaignId: string, testEmail: stri
     console.error("Failed to trigger test blast:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Gagal memicu test blast. Pastikan n8n aktif.",
+      error: friendlyError(error),
     };
   }
 }
@@ -250,7 +367,7 @@ export async function updateCampaignAction(
     console.error("Failed to update campaign:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Gagal memperbarui campaign.",
+      error: friendlyError(error),
     };
   }
 }
@@ -265,7 +382,123 @@ export async function deleteCampaignAction(campaignId: string) {
     console.error("Failed to delete campaign:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Gagal menghapus campaign.",
+      error: friendlyError(error),
+    };
+  }
+}
+
+export async function getSpreadsheetConfigsAction() {
+  try {
+    // Auto-create table if it doesn't exist
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS spreadsheet_config (
+        id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        sheet_name  VARCHAR(255) NOT NULL,
+        sheet_id    VARCHAR(255) NOT NULL DEFAULT '',
+        created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // Ensure sheet_id column exists using cross-compatible MySQL syntax
+    try {
+      const cols = await db.$queryRawUnsafe<any[]>(
+        "SHOW COLUMNS FROM spreadsheet_config LIKE 'sheet_id'"
+      );
+      if (!cols || cols.length === 0) {
+        await db.$executeRawUnsafe(
+          "ALTER TABLE spreadsheet_config ADD COLUMN sheet_id VARCHAR(255) NOT NULL DEFAULT ''"
+        );
+      }
+    } catch (colErr) {
+      console.warn("Could not check/add sheet_id column:", colErr);
+    }
+
+    let configs: any[] = [];
+    try {
+      configs = await db.$queryRawUnsafe<any[]>(
+        "SELECT id, sheet_name as sheetName, sheet_id as sheetId FROM spreadsheet_config ORDER BY id ASC"
+      );
+    } catch (_) {
+      // Fallback query if sheet_id column is somehow missing
+      configs = await db.$queryRawUnsafe<any[]>(
+        "SELECT id, sheet_name as sheetName, '' as sheetId FROM spreadsheet_config ORDER BY id ASC"
+      );
+    }
+
+    // Convert BigInt id to Number for JSON serialization
+    const cleanConfigs = configs.map((c) => ({
+      id: Number(c.id),
+      sheet_name: c.sheetName || "",
+      sheet_id: c.sheetId || "",
+    }));
+
+    return { success: true, configs: cleanConfigs };
+  } catch (error) {
+    console.error("Failed to fetch spreadsheet configs:", error);
+    return {
+      success: false,
+      error: friendlyError(error),
+    };
+  }
+}
+
+export async function createSpreadsheetConfigAction(sheetName: string, sheetId: string) {
+  try {
+    if (!sheetName.trim() || !sheetId.trim()) {
+      return { success: false, error: "Nama Sheet dan Sheet ID wajib diisi." };
+    }
+
+    await db.$executeRawUnsafe(
+      "INSERT INTO spreadsheet_config (sheet_name, sheet_id) VALUES (?, ?)",
+      sheetName.trim(),
+      sheetId.trim()
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to create spreadsheet config:", error);
+    return {
+      success: false,
+      error: friendlyError(error),
+    };
+  }
+}
+
+export async function updateSpreadsheetConfigAction(id: number, sheetName: string, sheetId: string) {
+  try {
+    if (!sheetName.trim() || !sheetId.trim()) {
+      return { success: false, error: "Nama Sheet dan Sheet ID wajib diisi." };
+    }
+
+    await db.$executeRawUnsafe(
+      "UPDATE spreadsheet_config SET sheet_name = ?, sheet_id = ? WHERE id = ?",
+      sheetName.trim(),
+      sheetId.trim(),
+      id
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to update spreadsheet config:", error);
+    return {
+      success: false,
+      error: friendlyError(error),
+    };
+  }
+}
+
+export async function deleteSpreadsheetConfigAction(id: number) {
+  try {
+    await db.$executeRawUnsafe(
+      "DELETE FROM spreadsheet_config WHERE id = ?",
+      id
+    );
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to delete spreadsheet config:", error);
+    return {
+      success: false,
+      error: friendlyError(error),
     };
   }
 }

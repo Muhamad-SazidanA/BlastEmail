@@ -2,6 +2,24 @@
 
 import { db } from "@/lib/db";
 
+/**
+ * Converts raw technical error messages to user-friendly Indonesian messages.
+ */
+function friendlyError(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (msg.includes("Can't reach database server") || msg.includes("ECONNREFUSED"))
+    return "Tidak dapat terhubung ke database. Pastikan server database sudah aktif dan berjalan.";
+  if (msg.includes("Connection refused") || msg.includes("connect ETIMEDOUT"))
+    return "Koneksi ke database gagal (timeout). Silakan coba lagi dalam beberapa saat.";
+  if (msg.includes("Access denied"))
+    return "Akses ke database ditolak. Hubungi administrator untuk memeriksa konfigurasi.";
+  if (msg.includes("doesn't exist") || msg.includes("does not exist"))
+    return "Struktur database belum lengkap. Hubungi administrator untuk menjalankan migrasi database.";
+  if (msg.includes("PrismaClientInitializationError"))
+    return "Gagal menginisialisasi koneksi database. Pastikan server database aktif.";
+  return "Terjadi kesalahan pada sistem. Silakan coba lagi atau hubungi administrator.";
+}
+
 export async function getDashboardStatsAction() {
   try {
     // 1. Fetch campaigns data
@@ -110,7 +128,7 @@ export async function getDashboardStatsAction() {
     console.error("Failed to get dashboard stats:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: friendlyError(error),
     };
   }
 }
